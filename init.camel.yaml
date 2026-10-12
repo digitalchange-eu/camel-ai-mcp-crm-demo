@@ -1,0 +1,75 @@
+- beans:
+    - name: dataSource
+      type: org.sqlite.SQLiteDataSource
+      properties:
+        url: "jdbc:sqlite:crm.db"
+        enforceForeignKeys: true
+
+- route:
+    id: init-database
+    from:
+      uri: "timer:init"
+      parameters:
+        repeatCount: 1
+      steps:
+        - log:
+            message: "Initializing CRM database..."
+
+        - to:
+            uri: "sql:CREATE TABLE IF NOT EXISTS customers (
+              id INTEGER PRIMARY KEY,
+              name TEXT NOT NULL UNIQUE,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+              )"
+            parameters:
+              dataSource: "#dataSource"
+
+        - to:
+            uri: "sql:CREATE TABLE IF NOT EXISTS crm_notes (
+              id INTEGER PRIMARY KEY,
+              customer_id INTEGER NOT NULL,
+              note TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (customer_id) REFERENCES customers(id)
+              )"
+            parameters:
+              dataSource: "#dataSource"
+
+        - to:
+            uri: "sql:INSERT OR IGNORE INTO customers (id, name, created_at) VALUES
+              (1, 'Acme Industries', '2026-09-15 09:00:00'),
+              (2, 'BluePeak Industries', '2026-09-18 10:30:00'),
+              (3, 'Acme Manufacturing', '2026-09-22 14:15:00')"
+            parameters:
+              dataSource: "#dataSource"
+
+        - to:
+            uri: "sql:INSERT OR IGNORE INTO crm_notes (id, customer_id, note, created_at) VALUES
+              (1, 1,
+              'Initial meeting completed. Customer is evaluating options to integrate their ERP and production systems.',
+              '2026-09-16 11:20:00'),
+
+              (2, 1,
+              'Technical workshop scheduled to review existing interfaces and identify suitable integration use cases.',
+              '2026-09-29 15:45:00'),
+
+              (3, 2,
+              'Customer reported difficulties keeping shipment information synchronized between the ERP and warehouse systems.',
+              '2026-09-19 13:10:00'),
+
+              (4, 2,
+              'Demonstrated the integration platform and discussed near real-time exchange of order and shipment data.',
+              '2026-10-01 09:30:00'),
+
+              (5, 3,
+              'Introductory call completed. Customer is interested in replacing several custom point-to-point integrations.',
+              '2026-09-23 10:00:00'),
+
+              (6, 3,
+              'Follow-up requested for November to discuss integration of the CRM system with the central ERP platform.',
+              '2026-10-03 14:40:00')"
+            parameters:
+              dataSource: "#dataSource"
+
+        - log:
+            message: "CRM database initialization completed."

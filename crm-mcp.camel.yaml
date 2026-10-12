@@ -1,0 +1,160 @@
+# ============================================================
+# MCP Tool: Find Customers
+# ============================================================
+
+- route:
+    id: find-customers
+    startupOrder: 100
+
+    from:
+      uri: ai-tool:find_customers
+      parameters:
+        tags: crm
+
+        title: "Find customers"
+
+        description: >
+          Searches existing CRM customers by name.
+          Use this tool when a customer is referenced by name and the
+          corresponding CRM customer ID is not yet known.
+
+        parameter.query: string
+        parameter.query.description: >
+          Customer name or partial customer name to search for.
+        parameter.query.required: true
+
+        readOnlyHint: true
+        destructiveHint: false
+        idempotentHint: true
+        openWorldHint: false
+
+      steps:
+
+        - log:
+            message: "Searching customers for '${header.query}'"
+
+        - to:
+            uri: >-
+              sql:SELECT id, name
+              FROM customers
+              WHERE LOWER(name)
+                LIKE LOWER('%' || CAST(:#query AS VARCHAR) || '%')
+              ORDER BY name
+              LIMIT 20
+
+        - marshal:
+            json: {}
+
+
+# ============================================================
+# MCP Tool: Get CRM Notes
+# ============================================================
+
+- route:
+    id: get-crm-notes
+    startupOrder: 101
+
+    from:
+      uri: ai-tool:get_crm_notes
+      parameters:
+        tags: crm
+
+        title: "Get CRM notes"
+
+        description: >
+          Returns the most recent CRM notes for an existing customer.
+          Requires the internal CRM customer ID.
+          If only a customer name is known, use find_customers first.
+
+        parameter.customer_id: integer
+        parameter.customer_id.description: >
+          Internal CRM customer ID.
+        parameter.customer_id.required: true
+
+        readOnlyHint: true
+        destructiveHint: false
+        idempotentHint: true
+        openWorldHint: false
+
+      steps:
+
+        - log:
+            message: "Loading CRM notes for customer ${header.customer_id}"
+
+        - to:
+            uri: >-
+              sql:SELECT
+                n.id,
+                n.customer_id,
+                c.name AS customer_name,
+                n.note,
+                strftime('%Y-%m-%dT%H:%M:%SZ', n.created_at) AS created_at
+              FROM crm_notes n
+              JOIN customers c
+                ON c.id = n.customer_id
+              WHERE n.customer_id = :#customer_id
+              ORDER BY n.created_at DESC
+              LIMIT 20
+
+        - marshal:
+            json: {}
+
+
+# ============================================================
+# MCP Tool: Create CRM Note
+# ============================================================
+
+- route:
+    id: create-crm-note
+    startupOrder: 102
+
+    from:
+      uri: ai-tool:create_crm_note
+      parameters:
+        tags: crm
+
+        title: "Create CRM note"
+
+        description: >
+          Stores a new CRM note for an existing customer.
+          Requires the internal CRM customer ID.
+          If only a customer name is known, use find_customers first
+          to resolve the customer before calling this tool.
+
+        parameter.customer_id: integer
+        parameter.customer_id.description: >
+          Internal CRM customer ID of the customer the note belongs to.
+        parameter.customer_id.required: true
+
+        parameter.note: string
+        parameter.note.description: >
+          Concise CRM note containing the relevant information from
+          the customer interaction.
+        parameter.note.required: true
+
+        readOnlyHint: false
+        destructiveHint: false
+        idempotentHint: false
+        openWorldHint: false
+
+      steps:
+
+        - log:
+            message: "Creating CRM note for customer ${header.customer_id}"
+
+        - to:
+            uri: >-
+              sql:INSERT INTO crm_notes
+              (customer_id, note)
+              VALUES
+              (:#customer_id, :#note)
+
+        - setBody:
+            simple: |
+              {
+                "success": true,
+                "customer_id": ${header.customer_id}
+              }
+
+        - log:
+            message: "CRM note created for customer ${header.customer_id}"
